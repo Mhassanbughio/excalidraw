@@ -36,16 +36,17 @@ export function renderScene(
     renderSelection?: boolean;
   } = {},
 ): boolean {
+  // Bail out as early as possible
+  if (!canvas) {
+    return false;
+  }
+
   // Use offsets insteads of scrolls if available
   sceneState = {
     ...sceneState,
     scrollX: typeof offsetX === "number" ? offsetX : sceneState.scrollX,
     scrollY: typeof offsetY === "number" ? offsetY : sceneState.scrollY,
   };
-
-  if (!canvas) {
-    return false;
-  }
 
   const context = canvas.getContext("2d")!;
 
