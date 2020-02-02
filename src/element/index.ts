@@ -25,3 +25,4 @@ export {
   normalizeDimensions,
 } from "./sizeHelpers";
 export { getScaledElement } from "./scale";
+export { getElementWithResizeHandler } from "./resizeTest";

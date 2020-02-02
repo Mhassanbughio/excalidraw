@@ -18,17 +18,19 @@ import {
   getPerfectElementSize,
   resizePerfectLineForNWHandler,
   normalizeDimensions,
+  getElementWithResizeHandler,
+  getScaledElement,
 } from "./element";
 import {
+  getElementAtPosition,
+  getElementContainingPosition,
   clearSelection,
   deleteSelectedElements,
-  getElementsWithinSelection,
   isOverScrollBars,
   restoreFromLocalStorage,
   saveToLocalStorage,
-  getElementAtPosition,
+  getElementsWithinSelection,
   createScene,
-  getElementContainingPosition,
   hasBackground,
   hasStroke,
   hasText,
@@ -59,7 +61,6 @@ import { createHistory } from "./history";
 import ContextMenu from "./components/ContextMenu";
 
 import "./styles.scss";
-import { getElementWithResizeHandler } from "./element/resizeTest";
 import {
   ActionManager,
   actionDeleteSelected,
@@ -455,6 +456,93 @@ export class App extends React.Component<any, AppState> {
     }
   };
 
+  private getElementContainingPosition = (
+    elements: readonly ExcalidrawElement[],
+    x: number,
+    y: number,
+  ) => {
+    return getElementContainingPosition(
+      this.getElementsWithZoomScale(elements),
+      x,
+      y,
+    );
+  };
+
+  private getElementAtPosition = (
+    elements: readonly ExcalidrawElement[],
+    x: number,
+    y: number,
+  ) => {
+    return getElementAtPosition(this.getElementsWithZoomScale(elements), x, y);
+  };
+
+  private isOverScrollBars = (
+    elements: readonly ExcalidrawElement[],
+    x: number,
+    y: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    scrollX: number,
+    scrollY: number,
+  ) => {
+    return isOverScrollBars(
+      this.getElementsWithZoomScale(elements),
+      x,
+      y,
+      canvasWidth,
+      canvasHeight,
+      scrollX,
+      scrollY,
+    );
+  };
+
+  private getElementsWithinSelection = (
+    elements: readonly ExcalidrawElement[],
+    selection: ExcalidrawElement,
+  ) => {
+    return getElementsWithinSelection(
+      this.getElementsWithZoomScale(elements),
+      selection,
+    );
+  };
+
+  private getCommonBounds = (elements: readonly ExcalidrawElement[]) => {
+    return getCommonBounds(this.getElementsWithZoomScale(elements));
+  };
+
+  private getElementsWithZoomScale = (
+    elements: readonly ExcalidrawElement[],
+  ): ExcalidrawElement[] => {
+    return elements.map(element => getScaledElement(element, this.state.zoom));
+  };
+
+  private setIsSelectedOnElement = (
+    element: ExcalidrawElement,
+    isSelected: boolean,
+  ) => {
+    elements = elements.map(someElement => {
+      if (someElement.id === element.id) {
+        someElement.isSelected = isSelected;
+      }
+      return someElement;
+    });
+  };
+
+  private selectElement = (element: ExcalidrawElement | null) => {
+    if (element === null) {
+      return;
+    }
+    element.isSelected = true;
+    this.setIsSelectedOnElement(element, true);
+  };
+  private deselectElement = (element: ExcalidrawElement | null) => {
+    if (element === null) {
+      return;
+    }
+    element.isSelected = false;
+    this.setIsSelectedOnElement(element, false);
+  };
+
   private renderSelectedShapeActions(elements: readonly ExcalidrawElement[]) {
     const { elementType, editingElement } = this.state;
     const targetElements = editingElement
@@ -771,6 +859,9 @@ export class App extends React.Component<any, AppState> {
                 this.canvas.addEventListener("wheel", this.handleWheel, {
                   passive: false,
                 });
+                this.canvas
+                  .getContext("2d")
+                  ?.setTransform(canvasScale, 0, 0, canvasScale, 0, 0);
               } else {
                 this.canvas?.removeEventListener("wheel", this.handleWheel);
               }
@@ -780,7 +871,7 @@ export class App extends React.Component<any, AppState> {
 
               const { x, y } = viewportCoordsToSceneCoords(e, this.state);
 
-              const element = getElementAtPosition(elements, x, y);
+              const element = this.getElementAtPosition(elements, x, y);
               if (!element) {
                 ContextMenu.push({
                   options: [
@@ -803,7 +894,7 @@ export class App extends React.Component<any, AppState> {
 
               if (!element.isSelected) {
                 elements = clearSelection(elements);
-                element.isSelected = true;
+                this.selectElement(element);
                 this.setState({});
               }
 
@@ -894,7 +985,7 @@ export class App extends React.Component<any, AppState> {
               const {
                 isOverHorizontalScrollBar,
                 isOverVerticalScrollBar,
-              } = isOverScrollBars(
+              } = this.isOverScrollBars(
                 elements,
                 e.clientX - CANVAS_WINDOW_OFFSET_LEFT,
                 e.clientY - CANVAS_WINDOW_OFFSET_TOP,
@@ -952,7 +1043,7 @@ export class App extends React.Component<any, AppState> {
                   );
                   isResizingElements = true;
                 } else {
-                  hitElement = getElementAtPosition(elements, x, y);
+                  hitElement = this.getElementAtPosition(elements, x, y);
                   // clear selection if shift is not clicked
                   if (!hitElement?.isSelected && !e.shiftKey) {
                     elements = clearSelection(elements);
@@ -965,7 +1056,7 @@ export class App extends React.Component<any, AppState> {
                     // otherwise, it will trigger selection based on current
                     // state of the box
                     if (!hitElement.isSelected) {
-                      hitElement.isSelected = true;
+                      this.selectElement(hitElement);
                       elementIsAddedToSelection = true;
                     }
 
@@ -1051,12 +1142,12 @@ export class App extends React.Component<any, AppState> {
                 if (this.state.multiElement) {
                   const { multiElement } = this.state;
                   const { x: rx, y: ry } = multiElement;
-                  multiElement.isSelected = true;
+                  this.selectElement(multiElement);
                   multiElement.points.push([x - rx, y - ry]);
                   multiElement.shape = null;
                   this.setState({ draggingElement: multiElement });
                 } else {
-                  element.isSelected = false;
+                  this.deselectElement(element);
                   element.points.push([0, 0]);
                   element.shape = null;
                   elements = [...elements, element];
@@ -1516,13 +1607,11 @@ export class App extends React.Component<any, AppState> {
                   if (!e.shiftKey) {
                     elements = clearSelection(elements);
                   }
-                  const elementsWithinSelection = getElementsWithinSelection(
+                  const elementsWithinSelection = this.getElementsWithinSelection(
                     elements,
                     draggingElement,
                   );
-                  elementsWithinSelection.forEach(element => {
-                    element.isSelected = true;
-                  });
+                  elementsWithinSelection.forEach(this.selectElement);
                 }
                 // We don't want to save history when moving an element
                 history.skipRecording();
@@ -1551,7 +1640,7 @@ export class App extends React.Component<any, AppState> {
                   if (!draggingOccurred && !multiElement) {
                     this.setState({ multiElement: this.state.draggingElement });
                   } else if (draggingOccurred && !multiElement) {
-                    this.state.draggingElement!.isSelected = true;
+                    this.selectElement(this.state.draggingElement);
                     this.setState({
                       draggingElement: null,
                       elementType: "selection",
@@ -1600,10 +1689,10 @@ export class App extends React.Component<any, AppState> {
                   !elementIsAddedToSelection
                 ) {
                   if (e.shiftKey) {
-                    hitElement.isSelected = false;
+                    this.deselectElement(hitElement);
                   } else {
                     elements = clearSelection(elements);
-                    hitElement.isSelected = true;
+                    this.selectElement(hitElement);
                   }
                 }
 
@@ -1617,7 +1706,7 @@ export class App extends React.Component<any, AppState> {
                 if (elementType === "selection") {
                   elements = elements.slice(0, -1);
                 } else if (!elementLocked) {
-                  draggingElement.isSelected = true;
+                  this.selectElement(draggingElement);
                 }
 
                 if (!elementLocked) {
@@ -1652,7 +1741,11 @@ export class App extends React.Component<any, AppState> {
             onDoubleClick={e => {
               const { x, y } = viewportCoordsToSceneCoords(e, this.state);
 
-              const elementAtPosition = getElementAtPosition(elements, x, y);
+              const elementAtPosition = this.getElementAtPosition(
+                elements,
+                x,
+                y,
+              );
 
               const element =
                 elementAtPosition && isTextElement(elementAtPosition)
@@ -1771,7 +1864,7 @@ export class App extends React.Component<any, AppState> {
                   return;
                 }
               }
-              const hitElement = getElementAtPosition(elements, x, y);
+              const hitElement = this.getElementAtPosition(elements, x, y);
               document.documentElement.style.cursor = hitElement ? "move" : "";
             }}
           >
@@ -1840,7 +1933,7 @@ export class App extends React.Component<any, AppState> {
     ) {
       elements = clearSelection(elements);
 
-      const [minX, minY, maxX, maxY] = getCommonBounds(parsedElements);
+      const [minX, minY, maxX, maxY] = this.getCommonBounds(parsedElements);
 
       const elementsCenterX = distance(minX, maxX) / 2;
       const elementsCenterY = distance(minY, maxY) / 2;
@@ -1870,7 +1963,11 @@ export class App extends React.Component<any, AppState> {
   };
 
   private getTextWysiwygSnappedToCenterPosition(x: number, y: number) {
-    const elementClickedInside = getElementContainingPosition(elements, x, y);
+    const elementClickedInside = this.getElementContainingPosition(
+      elements,
+      x,
+      y,
+    );
     if (elementClickedInside) {
       const elementCenterX =
         elementClickedInside.x + elementClickedInside.width / 2;
