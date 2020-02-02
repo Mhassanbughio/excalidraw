@@ -35,7 +35,7 @@ export function renderScene(
     renderScrollbars?: boolean;
     renderSelection?: boolean;
   } = {},
-) {
+): boolean {
   // Use offsets insteads of scrolls if available
   sceneState = {
     ...sceneState,
@@ -44,7 +44,7 @@ export function renderScene(
   };
 
   if (!canvas) {
-    return;
+    return false;
   }
 
   const context = canvas.getContext("2d")!;
